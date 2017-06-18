@@ -58,7 +58,7 @@ defmodule ElixirGHAnalysis do
 
   def make_request(query) do
     url = "https://api.github.com/graphql"
-    token = ""
+    token =  System.get_env(GITHUB_API_TOKEN)
     headers = ["Authorization": "bearer #{token}"]
 
     IO.puts "making request..."
@@ -75,6 +75,7 @@ defmodule ElixirGHAnalysis do
 
   # ElixirGHAnalysis.record_data(['elixir', 'ruby'])
   # ElixirGHAnalysis.Repo.all(ElixirGHAnalysis.Developer)
+  # run source .env in your shell before you run any iex or mix commands.
 
   def save_developers(repos) do
     Enum.each repos, fn repo ->
