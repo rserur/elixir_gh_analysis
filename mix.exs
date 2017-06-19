@@ -15,7 +15,7 @@ defmodule ElixirGHAnalysis.Mixfile do
   # Type "mix help compile.app" for more information
   def application do
     # Specify extra applications you'll use from Erlang/Elixir
-    [applications: [:logger, :httpoison, :ecto, :postgrex],
+    [applications: [:logger, :httpoison, :ecto, :postgrex, :tzdata],
      mod: {ElixirGHAnalysis, []}]
   end
 
@@ -33,7 +33,8 @@ defmodule ElixirGHAnalysis.Mixfile do
       {:poison, "~> 3.1"},
       {:httpoison, "~> 0.11.1"},
       {:ecto, "~> 2.0"},
-      {:postgrex, "~> 0.11"}
+      {:postgrex, "~> 0.11"},
+      {:timex, "~> 3.0"}
     ]
   end
 end
