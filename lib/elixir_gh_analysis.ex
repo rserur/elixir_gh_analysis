@@ -12,25 +12,26 @@ defmodule ElixirGHAnalysis do
   def start(_type, _args) do
     import Supervisor.Spec, warn: false
 
+    IEx.pry
+
     # Define workers and child supervisors to be supervised
     children = [
-      supervisor(Repo, [])
+      supervisor(Repo, []),
+      worker(ElixirGHAnalysis.Searcher, _args)
       # Starts a worker by calling: TestSuper.Worker.start_link(arg1, arg2, arg3)
       # worker(TestSuper.Worker, [arg1, arg2, arg3]),
     ]
 
     # See http://elixir-lang.org/docs/stable/elixir/Supervisor.html
     # for other strategies and supported options
-    opts = [strategy: :one_for_one, name: TestSuper.Supervisor]
+    opts = [strategy: :one_for_one, name: ElixirGHAnalysis.Supervisor]
     Supervisor.start_link(children, opts)
   end
 
-  def record_data(languages) do
-    Enum.each languages, fn language ->
-      %Search{language: language, cursor: nil}
-      |> add_variables
-      |> execute_request
-    end
+  def record_data(language) do
+    %Search{language: language, cursor: nil}
+    |> add_variables
+    |> execute_request
   end
 
   def execute_request(%Search{query: query, variables: variables, has_next_page: has_next_page,
@@ -42,15 +43,15 @@ defmodule ElixirGHAnalysis do
 
     cond do
       has_next_page == false ->
-        IO.puts "finished searching for #{language} repos..."
+        IO.puts "finished searching for #{language} language repos..."
       requests_remaining >= 1 ->
-        IO.puts "running another request for language #{language} repos..."
+        IO.puts "running another request for #{language} language repos..."
         case HTTPoison.post(url, Poison.encode!(%{query: query, variables: variables}), request_headers) do
           {:ok, %Response{status_code: 200, body: body, headers: response_headers}} ->
             body = Poison.decode!(body) |> get_in(["data", "search"])
             %Search{search| results: %{body: body, response_headers: response_headers}}
             |> save_developers
-            |> add_cursor
+            |> move_cursor
             |> add_next_page
             |> add_reset_time
             |> add_remaining_requests
@@ -62,7 +63,6 @@ defmodule ElixirGHAnalysis do
       requests_remaining == 0 ->
         time_remaining = Timex.format(reset_time, "{relative}", :relative)
         IO.puts "Max requests reached. Waiting until rate limit expires #{time_remaining}..."
-
         Timex.diff(reset_time, Timex.now, :milliseconds)
         |> wait_then_run(search)
         |> add_variables
@@ -71,12 +71,13 @@ defmodule ElixirGHAnalysis do
   end
 
   def add_variables(%Search{language: language, cursor: cursor} = search) do
-    IO.puts "building variables for #{language} at cursor #{cursor}..."
+    IO.puts "adding language (#{language}) and cursor (#{cursor}) variables..."
     variables = %{ "queryString": "stars:>=4 created:>=2011-01-01 language:#{language}",
       "afterString": cursor }
     %Search{search | variables: Poison.encode!(variables)}
   end
 
+  # iex -S mix
   # ElixirGHAnalysis.record_data(["Elixir", "Ruby"])
   # ElixirGHAnalysis.Repo.all(ElixirGHAnalysis.Developer)
   # run source .env in your shell before you run any iex or mix commands.
@@ -85,9 +86,6 @@ defmodule ElixirGHAnalysis do
     case results.body["edges"] do
     nil ->
       IO.puts "No additional repos found..."
-
-      # MOVE ON TO NEXT LANGUAGE
-
     _ ->
       Enum.each results.body["edges"], fn repo ->
         name = repo["node"]["owner"]["name"]
@@ -110,7 +108,7 @@ defmodule ElixirGHAnalysis do
     search
   end
 
-  def add_cursor(%Search{results: results} = search) do
+  def move_cursor(%Search{results: results} = search) do
     %Search{search | cursor: results.body["pageInfo"]["endCursor"]}
   end
 
@@ -120,7 +118,10 @@ defmodule ElixirGHAnalysis do
 
   def add_reset_time(%Search{results: results} = search) do
     reset_time = List.keyfind(results.response_headers, "X-RateLimit-Reset", 0)
-    |> elem(1) |> Integer.parse |> elem(0) |> DateTime.from_unix |> elem(1)
+    |> elem(1)
+    |> Integer.parse
+    |> elem(0)
+    |> DateTime.from_unix |> elem(1)
 
     %Search{search | reset_time: reset_time}
   end
